@@ -1,0 +1,65 @@
+#!/bin/bash
+#SBATCH --job-name="Atomic_Calculation"
+#SBATCH --mem-per-cpu=64G
+#SBATCH --nodes=10
+#SBATCH --time=40:00:00
+#SBATCH --ntasks=24
+#SBATCH --account="PSS0009"
+
+
+echo "combination 2 0 0.5 # # 4" > Atomic_Calculations_outputs.txt
+
+echo "Changing Number of particles"
+
+declare -A dict
+dict[1]="2"
+dict[2]="2 14"
+dict[3]="2 14 38"
+dict[4]="2 14 38 54"
+dict[5]="2 14 38 54 66"
+dict[6]="2 14 38 54 66 114"
+dict[7]="2 14 38 54 66 114"
+
+rs=()
+st=0.01
+step=0.01
+
+for i in $(seq 0 100); do
+	rs+=("$(bc <<< "scale=2; $st + ($i * $step)")")
+done
+
+for r in "${rs[@]}"; do
+    for i in {1..7}; do
+        j=${dict[$i]}
+        echo "$j" >> combinations.txt
+
+        for k in $j; do
+            output_file="Combination_${i}-${k}-${r}.txt"
+
+            # Run main.exe with timeout (300 sec = 5 min)
+            timeout 2700 ./main.exe 2 0 "$r" "$i" "$k" 50 > "$output_file" 2>> error.log
+            exit_status=$?
+
+            # Check if the command was killed due to timeout
+            if [ $exit_status -eq 124 ]; then
+                echo "Skipping $i-$k-$r due to timeout" >> skipped_cases.log
+                continue
+            fi
+
+            # Log energies only if output was generated
+            if [ -s "$output_file" ]; then
+                echo "ECCD Energy for $r density $i shell and $k particles" >> Atomic_Calculations_output.txt
+                sed -n 's/.*E_CCD[[:space:]]*=[[:space:]]*\([-0-9.]*\).*/\1/p' "$output_file" >> Atomic_Calculations_output.txt
+                echo "----------------------------" >> Atomic_Calculations_output.txt
+                echo "Eref Energy for $r density $i shell and $k particles" >> Atomic_Calculations_output.txt
+                sed -n 's/.*Eref[[:space:]]*:[[:space:]]*\([-0-9.]*\).*/\1/p' "$output_file" >> Atomic_Calculations_output.txt
+                echo "----------------------------" >> Atomic_Calculations_output.txt
+                echo "Embpt2 Energy for $r density $i shell and $k particles" >> Atomic_Calculations_output.txt
+                sed -n 's/.*Empbt2[[:space:]]*=[[:space:]]*\([-0-9.]*\).*/\1/p' "$output_file" >> Atomic_Calculations_output.txt
+                echo "------------------------------ next combo" >> pink_pony_club.txt
+            else
+                echo "Error: No output generated for $i-$k-$r" >> error.log
+            fi
+        done
+    done
+done
